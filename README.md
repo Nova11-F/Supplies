@@ -79,7 +79,6 @@ Tujuan utama dari pengembangan Supply Management System adalah:
 - HTML5
 - Tailwind CSS
 - JavaScript
-- Boxicons
 
 ### Backend
 - PHP (Native)
