@@ -1,0 +1,267 @@
+<?php
+// Nama file yang akan dibuat
+$filename = 'Supply_Management_User_Manual.txt';
+// User Manual Content
+$content = "================================================================================
+SUPPLY MANAGEMENT SYSTEM - USER MANUAL
+================================================================================
+
+Version: 1.0.0 (Beta)
+Last Updated: December 14, 2025
+Developer: Supply Management Team
+Contact: support@inventory.com
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. Introduction
+2. Getting Started
+3. Dashboard Overview
+4. Managing Products
+5. Managing Suppliers
+6. Purchase Orders
+7. Stock Management
+8. Reports
+9. Settings
+10. Troubleshooting
+11. Contact Support
+
+================================================================================
+1. INTRODUCTION
+================================================================================
+Selamat datang di Supply Management System! Aplikasi ini dirancang untuk 
+membantu Anda mengelola inventory, supplier, dan purchase orders dengan 
+mudah dan efisien.
+
+Fitur Utama:
+- Dashboard real-time dengan statistik lengkap
+- Manajemen produk dan kategori
+- Tracking supplier dan purchase orders
+- Kontrol stok masuk dan keluar
+- Laporan komprehensif
+- Multi-user dengan role-based access
+
+================================================================================
+2. GETTING STARTED
+================================================================================
+2.1 Login ke Sistem
+   - Buka browser dan akses URL sistem
+   - Masukkan username dan password
+   - Klik tombol \"Login\"
+
+2.2 Dashboard
+   Setelah login, Anda akan melihat dashboard dengan:
+   - Total Items: Jumlah produk dalam sistem
+   - Total Suppliers: Jumlah supplier aktif
+   - Categories: Jumlah kategori produk
+   - Total Purchases: Jumlah purchase orders
+
+2.3 Navigasi Menu
+   Menu utama tersedia di sidebar kiri:
+   - Dashboard: Halaman utama
+   - Master Data: Kelola produk, supplier, kategori
+   - Transactions: Purchase orders dan invoices
+   - Inventory: Manajemen stok
+   - Reports: Laporan dan analisis
+   - Settings: Pengaturan akun
+
+================================================================================
+3. DASHBOARD OVERVIEW
+================================================================================
+Dashboard menampilkan:
+- Cards dengan statistik real-time
+- Grafik transaksi 7 hari terakhir
+- Low Stock Alerts (produk dengan stok menipis)
+- Staff Activity Log (aktivitas terbaru tim)
+- Recent Purchases (purchase orders terbaru)
+
+Tips:
+- Perhatikan Low Stock Alerts secara berkala
+- Monitor grafik transaksi untuk analisis trend
+- Gunakan filter tanggal untuk melihat periode tertentu
+
+================================================================================
+4. MANAGING PRODUCTS
+================================================================================
+4.1 Menambah Produk Baru
+   1. Klik menu \"Master Data\" > \"Products\"
+   2. Klik tombol \"+ Add Product\"
+   3. Isi form:
+      - Product Code: Kode unik produk
+      - Product Name: Nama produk
+      - Category: Pilih kategori
+      - Brand: Pilih brand
+      - Supplier: Pilih supplier
+      - Description: Deskripsi produk
+   4. Klik \"Save\"
+
+4.2 Edit Produk
+   1. Klik icon pensil pada produk yang ingin diedit
+   2. Update informasi yang diperlukan
+   3. Klik \"Update\"
+
+4.3 Hapus Produk
+   1. Klik icon trash pada produk
+   2. Konfirmasi penghapusan
+   3. Data akan dihapus permanen (tidak bisa dikembalikan)
+
+================================================================================
+5. MANAGING SUPPLIERS
+================================================================================
+5.1 Menambah Supplier Baru
+   1. Klik menu \"Master Data\" > \"Suppliers\"
+   2. Klik tombol \"+ Add Supplier\"
+   3. Isi informasi supplier:
+      - Supplier Code
+      - Name
+      - Email
+      - Phone
+      - Address
+      - Status (Active/Inactive)
+   4. Klik \"Save\"
+
+5.2 Status Supplier
+   - Active: Supplier masih aktif dan bisa digunakan
+   - Inactive: Supplier tidak aktif (archived)
+
+================================================================================
+6. PURCHASE ORDERS
+================================================================================
+6.1 Membuat Purchase Order
+   1. Klik menu \"Transactions\" > \"Purchase Orders\"
+   2. Klik \"+ New Purchase Order\"
+   3. Pilih supplier
+   4. Tambahkan item:
+      - Pilih produk
+      - Masukkan quantity
+      - Tentukan lokasi penyimpanan
+   5. Review total amount
+   6. Klik \"Submit Order\"
+
+6.2 Status Purchase Order
+   - Pending: Menunggu persetujuan
+   - Approved: Disetujui, menunggu pengiriman
+   - Received: Barang sudah diterima
+   - Cancelled: Dibatalkan
+   - Invoiced: Sudah dibuat invoice
+
+6.3 Menerima Barang
+   1. Buka purchase order yang sudah Approved
+   2. Klik \"Receive Items\"
+   3. Konfirmasi quantity yang diterima
+   4. Pilih lokasi penyimpanan
+   5. Status akan berubah menjadi \"Received\"
+   6. Stok akan bertambah otomatis
+
+================================================================================
+7. STOCK MANAGEMENT
+================================================================================
+7.1 Stock In (Barang Masuk)
+   - Stok bertambah otomatis saat PO di-receive
+   - Atau input manual via menu \"Stock In\"
+
+7.2 Stock Out (Barang Keluar)
+   1. Klik menu \"Inventory\" > \"Stock Out\"
+   2. Klik \"+ New Stock Out\"
+   3. Pilih produk dan lokasi
+   4. Masukkan quantity
+   5. Pilih reason (Sales, Damage, etc.)
+   6. Klik \"Submit\"
+
+7.3 Stock Transfer
+   Memindahkan stok antar lokasi:
+   1. Pilih produk
+   2. Pilih lokasi asal dan tujuan
+   3. Masukkan quantity
+   4. Klik \"Transfer\"
+
+7.4 Stock Adjustment
+   Untuk koreksi stok:
+   1. Pilih produk dan lokasi
+   2. Pilih tipe (Add/Subtract)
+   3. Masukkan quantity dan alasan
+   4. Klik \"Adjust\"
+
+================================================================================
+8. REPORTS
+================================================================================
+8.1 Jenis Laporan
+   - Stock Report: Laporan stok per produk/lokasi
+   - Transaction Report: Laporan transaksi periode tertentu
+   - Supplier Report: Performa supplier
+   - Low Stock Report: Produk dengan stok menipis
+
+8.2 Filter & Export
+   - Gunakan date range filter
+   - Export ke Excel/PDF
+   - Print langsung dari browser
+
+================================================================================
+9. SETTINGS
+================================================================================
+9.1 Profile Settings
+   - Update nama, email, phone
+   - Username tidak bisa diubah
+
+9.2 Change Password
+   - Masukkan password lama
+   - Masukkan password baru (min. 8 karakter)
+   - Konfirmasi password baru
+   - Klik \"Change Password\"
+
+9.3 Notifications
+   - Email notifications
+   - Low stock alerts
+   - Purchase order updates
+
+================================================================================
+10. TROUBLESHOOTING
+================================================================================
+Q: Lupa password?
+A: Hubungi Super Admin untuk reset password.
+
+Q: Stok tidak bertambah setelah receive PO?
+A: Pastikan status PO sudah \"Received\" dan lokasi sudah dipilih.
+
+Q: Data yang dihapus bisa dikembalikan?
+A: Tidak. Penghapusan bersifat permanen.
+
+Q: Error saat login?
+A: Cek koneksi internet dan pastikan credentials benar.
+
+Q: Laporan tidak muncul?
+A: Pastikan date range sudah dipilih dengan benar.
+
+================================================================================
+11. CONTACT SUPPORT
+================================================================================
+Jika mengalami masalah teknis atau error:
+
+WhatsApp: 0812-9999-8888
+Email: support@inventory.com
+Working Hours: Senin-Jumat, 08:00-17:00 WIB
+
+Atau gunakan fitur \"Lapor Masalah\" di menu Help & Support.
+
+================================================================================
+END OF USER MANUAL
+================================================================================
+
+Terima kasih telah menggunakan Supply Management System!
+© 2025 Supply Management System. All rights reserved.
+";
+
+// Simpan file di server
+file_put_contents($filename, $content);
+
+// Kirim file ke browser untuk didownload
+header('Content-Type: text/plain; charset=utf-8');
+header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
+header('Cache-Control: private, max-age=0, must-revalidate');
+header('Pragma: public');
+
+// Baca file dan kirim ke browser
+readfile($filename);
+exit;
+?>
+

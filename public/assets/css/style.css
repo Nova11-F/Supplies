@@ -1,0 +1,48 @@
+.custom-modal {
+    display: none; /* Hidden by default */
+    position: fixed !important; /* Paksa Fixed */
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 9999 !important; /* Paling Depan */
+}
+
+.modal-backdrop {
+    position: absolute !important;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(17, 24, 39, 0.7) !important;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+}
+
+.modal-flex-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 100vh !important;
+    padding: 20px !important;
+    overflow-y: auto !important;
+}
+
+.modal-content-box {
+    position: relative !important;
+    background: white !important;
+    width: 100% !important;
+    max-width: 600px !important;
+    border-radius: 16px !important; 
+    margin: 0 auto !important;
+    
+    overflow: hidden !important; /* motong header agar tidak menutupi lengkungan */
+    
+    /* animasi */
+    transform: scale(0.9);
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* kunci Scroll Body */
+body.modal-open {
+    overflow: hidden !important;
+}

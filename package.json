@@ -1,0 +1,16 @@
+{
+  "name": "supply-management",
+  "version": "1.0.0",
+  "type": "module",
+
+  "dependencies": {
+    "@tailwindcss/cli": "^4.1.17",
+    "tailwindcss": "^4.1.17"
+  },
+
+  "scripts": {
+    "build": "tailwindcss -i ./src/input.css -o ./public/assets/css/output.css --config tailwind.config.js",
+    "watch": "tailwindcss -i ./src/input.css -o ./public/assets/css/output.css --watch --config tailwind.config.js"
+  }
+}
+
