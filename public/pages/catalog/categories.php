@@ -15,23 +15,54 @@ if (isset($_POST['create'])) {
         exit;
     }
 
-    // Ambil nama category dari input
-    $name = $_POST['category_name'];
+// Ambil nama category dari input
+$name = trim($_POST['category_name']);
+$desc = $_POST['description'];
+$status = $_POST['status'];
 
-    // Hapus semua spasi
-    $name_no_space = str_replace(' ', '', $name);
+// Hapus semua spasi
+$name_no_space = str_replace(' ', '', $name);
 
-    // Ambil 3 huruf pertama (uppercase)
-    $prefix = strtoupper(substr($name_no_space, 0, 3));
+// Ambil 3 huruf pertama
+$prefix = strtoupper(substr($name_no_space, 0, 3));
 
-    // Buat brand_code
-    $code = "CAT-$prefix";
+// Prefix dasar
+$base_code = "CAT-$prefix";
 
-    mysqli_query($conn, "INSERT INTO categories (category_code, name, description, status)
-        VALUES ('$code', '$name', '$desc', '$status')");
+// Ambil code terakhir dengan prefix yang sama
+$sql = "SELECT category_code 
+        FROM categories 
+        WHERE category_code LIKE '$base_code-%'
+        ORDER BY category_code DESC
+        LIMIT 1";
 
-    echo "<script>alert('Brands berhasil ditambahkan!'); location.href='index.php?page=catalog&sub=categories';</script>";
-    exit;
+$result = mysqli_query($conn, $sql);
+
+if (mysqli_num_rows($result) > 0) {
+    $row = mysqli_fetch_assoc($result);
+
+    // Ambil angka terakhir
+    $last_number = (int) substr($row['category_code'], strrpos($row['category_code'], '-') + 1);
+    $new_number = $last_number + 1;
+} else {
+    // Belum ada prefix ini
+    $new_number = 1;
+}
+
+// Buat category_code
+$code = "$base_code-$new_number";
+
+// Insert ke database
+mysqli_query($conn, "INSERT INTO categories 
+    (category_code, name, description, status)
+    VALUES 
+    ('$code', '$name', '$desc', '$status')");
+
+echo "<script>
+    alert('Kategori berhasil ditambahkan!');
+    location.href='index.php?page=catalog&sub=categories';
+</script>";
+exit;
 }
 
 //  UPDATE DATA
@@ -71,7 +102,7 @@ if (isset($_POST['update'])) {
             WHERE id='$id'
         ");
 
-    echo "<script>alert('Category berhasil diperbarui!'); location.href='index.php?page=catalog&sub=categories';</script>";
+    echo "<script>alert('Kategory berhasil diperbarui!'); location.href='index.php?page=catalog&sub=categories';</script>";
     exit;
 }
 
@@ -79,7 +110,7 @@ if (isset($_POST['update'])) {
 if (isset($_GET['delete'])) {
     $id = $_GET['delete'];
     mysqli_query($conn, "DELETE FROM categories WHERE id='$id'");
-    echo "<script>alert('Category berhasil dihapus!'); location.href='index.php?page=catalog&sub=categories';</script>";
+    echo "<script>alert('Kategory berhasil dihapus!'); location.href='index.php?page=catalog&sub=categories';</script>";
     exit;
 }
 

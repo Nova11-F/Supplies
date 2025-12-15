@@ -14,23 +14,54 @@ if (isset($_POST['create'])) {
         exit;
     }
 
-    // Ambil nama brand dari input
-    $name = $_POST['brands_name'];
+// Ambil nama brand dari input
+$name   = trim($_POST['brands_name']);
+$desc   = $_POST['description'];
+$status = $_POST['status'];
 
-    // Hapus semua spasi
-    $name_no_space = str_replace(' ', '', $name);
+// Hapus semua spasi
+$name_no_space = str_replace(' ', '', $name);
 
-    // Ambil 4 huruf pertama (uppercase)
-    $prefix = strtoupper(substr($name_no_space, 0, 4));
+// Ambil 4 huruf pertama
+$prefix = strtoupper(substr($name_no_space, 0, 4));
 
-    // Buat brand_code
-    $code = "BRN-$prefix";
+// Prefix dasar
+$base_code = "BRN-$prefix";
 
-    mysqli_query($conn, "INSERT INTO brands (brand_code, name, description, status)
-        VALUES ('$code', '$name', '$desc', '$status')");
+// Ambil brand_code terakhir dengan prefix sama
+$sql = "SELECT brand_code 
+        FROM brands 
+        WHERE brand_code LIKE '$base_code-%'
+        ORDER BY brand_code DESC
+        LIMIT 1";
 
-    echo "<script>alert('Brands berhasil ditambahkan!'); location.href='index.php?page=catalog&sub=brands';</script>";
-    exit;
+$result = mysqli_query($conn, $sql);
+
+if (mysqli_num_rows($result) > 0) {
+    $row = mysqli_fetch_assoc($result);
+
+    // Ambil angka terakhir
+    $last_number = (int) substr($row['brand_code'], strrpos($row['brand_code'], '-') + 1);
+    $new_number = $last_number + 1;
+} else {
+    // Prefix belum ada
+    $new_number = 1;
+}
+
+// Buat brand_code
+$code = "$base_code-$new_number";
+
+// Insert ke database
+mysqli_query($conn, "INSERT INTO brands 
+    (brand_code, name, description, status)
+    VALUES 
+    ('$code', '$name', '$desc', '$status')");
+
+echo "<script>
+    alert('Brand berhasil ditambahkan!');
+    location.href='index.php?page=catalog&sub=brands';
+</script>";
+exit;
 }
 
 //  UPDATE DATA

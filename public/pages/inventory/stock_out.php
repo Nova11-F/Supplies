@@ -1,6 +1,9 @@
 <?php
 include __DIR__ . '/../../../config/database.php';
 
+// ======================
+// DETECT AVAILABLE COLUMNS
+// ======================
 
 // Detect available date column name in `stock_out` table to avoid
 // referencing a non-existing column (fixes Unknown column errors).
@@ -17,7 +20,7 @@ if ($colsRes) {
     }
 }
 
-// Flags for optional columns
+// Flags for optional columns - ALL DEFINED HERE
 $has_category = in_array('category_id', $stock_out_cols);
 $has_location = in_array('location_id', $stock_out_cols);
 $has_product = in_array('product_id', $stock_out_cols);
@@ -26,6 +29,12 @@ $has_reason = in_array('reason', $stock_out_cols);
 $has_notes = in_array('notes', $stock_out_cols);
 $has_status = in_array('status', $stock_out_cols);
 $has_quantity = in_array('quantity', $stock_out_cols);
+$has_old_stock = in_array('old_stock', $stock_out_cols);
+$has_stock_out_date = in_array('stock_out_date', $stock_out_cols);
+
+// ======================
+// HELPER FUNCTIONS
+// ======================
 
 // Helper: Check available stock for a product at a location
 function check_available_stock_so($conn, $product_id, $location_id)
@@ -41,17 +50,62 @@ function check_available_stock_so($conn, $product_id, $location_id)
     return 0;
 }
 
+// Helper: Generate unique stock_out_code
+function generate_stock_out_code($conn, $product_id, $location_id)
+{
+    // Get product name (first 3 letters)
+    $productQuery = mysqli_query($conn, "SELECT name FROM products WHERE id = " . (int)$product_id);
+    $productName = '';
+    if ($productQuery && mysqli_num_rows($productQuery) > 0) {
+        $productData = mysqli_fetch_assoc($productQuery);
+        $productName = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $productData['name']), 0, 3));
+    }
+
+    // Ensure we have at least 3 characters, pad with 'X' if needed
+    $productName = str_pad($productName, 3, 'X', STR_PAD_RIGHT);
+
+    // Get location name (first 3 letters)
+    $locationQuery = mysqli_query($conn, "SELECT name FROM locations WHERE id = " . (int)$location_id);
+    $locationName = '';
+    if ($locationQuery && mysqli_num_rows($locationQuery) > 0) {
+        $locationData = mysqli_fetch_assoc($locationQuery);
+        $locationName = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $locationData['name']), 0, 3));
+    }
+
+    // Ensure we have at least 3 characters, pad with 'X' if needed
+    $locationName = str_pad($locationName, 3, 'X', STR_PAD_RIGHT);
+
+    // Base code format: OUT-[PRODUCT]-[LOCATION]
+    $baseCode = "OUT-{$productName}-{$locationName}";
+
+    // Find the highest number for this base code
+    $sql = "SELECT stock_out_code FROM stock_out 
+            WHERE stock_out_code LIKE '" . mysqli_real_escape_string($conn, $baseCode) . "%' 
+            ORDER BY stock_out_code DESC 
+            LIMIT 1";
+
+    $result = mysqli_query($conn, $sql);
+
+    $nextNumber = 1;
+    if ($result && mysqli_num_rows($result) > 0) {
+        $row = mysqli_fetch_assoc($result);
+        $lastCode = $row['stock_out_code'];
+
+        // Extract number from the last code (format: OUT-XXX-XXX-N)
+        if (preg_match('/-(\d+)$/', $lastCode, $matches)) {
+            $nextNumber = (int)$matches[1] + 1;
+        }
+    }
+
+    // Return complete code with number
+    return $baseCode . '-' . $nextNumber;
+}
+
 // ======================
 // HANDLE FORM SUBMISSIONS
 // ======================
 
 // CREATE Stock Out
-// Add this to the column detection section (after SHOW COLUMNS query)
-$has_old_stock = in_array('old_stock', $stock_out_cols);
-$has_stock_out_date = in_array('stock_out_date', $stock_out_cols);
-
-// Then in the CREATE handler, update the INSERT building section:
-
 if (isset($_POST['create'])) {
     $location_id = isset($_POST['location_id']) ? (int)$_POST['location_id'] : null;
     $out_date = isset($_POST['out_date']) ? mysqli_real_escape_string($conn, $_POST['out_date']) : null;
@@ -59,9 +113,6 @@ if (isset($_POST['create'])) {
     $notes = isset($_POST['notes']) ? mysqli_real_escape_string($conn, $_POST['notes']) : '';
     $product_ids = isset($_POST['product_id']) && is_array($_POST['product_id']) ? $_POST['product_id'] : [];
     $quantities = isset($_POST['quantity']) && is_array($_POST['quantity']) ? $_POST['quantity'] : [];
-
-    // Generate stock_out_code
-    $stock_out_code = 'OUT-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
 
     // Start transaction
     mysqli_begin_transaction($conn);
@@ -71,19 +122,22 @@ if (isset($_POST['create'])) {
         $requested_status = isset($_POST['status']) ? mysqli_real_escape_string($conn, $_POST['status']) : null;
         $appliedStates = ['completed', 'approved'];
 
-        // Insert each product as separate stock_out record. Do NOT change stock when status is pending.
+        // Insert each product as separate stock_out record
         foreach ($product_ids as $index => $product_id) {
             if (empty($product_id) || empty($quantities[$index])) continue;
 
             $quantity = (int)$quantities[$index];
 
-            // Capture current stock for historical reference but do NOT deduct unless requested_status is applied
+            // Capture current stock for historical reference
             $available = check_available_stock_so($conn, $product_id, $location_id);
 
-            // Block creation if requested quantity exceeds available stock at the location
+            // Block creation if requested quantity exceeds available stock
             if ($available < $quantity) {
                 throw new Exception("Produk (ID $product_id) stok tidak mencukupi di lokasi ini (tersedia: $available).");
             }
+
+            // Generate unique stock_out_code for this product-location combination
+            $stock_out_code = generate_stock_out_code($conn, $product_id, $location_id);
 
             // Get category_id (if present)
             $category_id = null;
@@ -157,12 +211,9 @@ if (isset($_POST['create'])) {
                     if (!mysqli_query($conn, $update_stock)) {
                         throw new Exception("Error updating stock: " . mysqli_error($conn));
                     }
-                    // applied stock deduction
                 } else {
                     throw new Exception("Stock record tidak ditemukan untuk product_id=$product_id di lokasi $location_id");
                 }
-            } else {
-                // deferred stock deduction for pending status
             }
         }
 
@@ -174,7 +225,7 @@ if (isset($_POST['create'])) {
     }
 }
 
-
+// DELETE Stock Out
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
     $sql = "DELETE FROM stock_out WHERE id = $id";
@@ -192,7 +243,7 @@ if (isset($_POST['update'])) {
     $out_date = isset($_POST['out_date']) ? mysqli_real_escape_string($conn, $_POST['out_date']) : null;
     $reason = isset($_POST['reason']) ? mysqli_real_escape_string($conn, $_POST['reason']) : '';
     $notes = isset($_POST['notes']) ? mysqli_real_escape_string($conn, $_POST['notes']) : '';
-    $product_id = isset($_POST['product_id'][0]) ? (int)$_POST['product_id'][0] : null; // Single product for edit
+    $product_id = isset($_POST['product_id'][0]) ? (int)$_POST['product_id'][0] : null;
     $quantity = isset($_POST['quantity'][0]) ? (int)$_POST['quantity'][0] : 0;
     $new_status = isset($_POST['status']) ? mysqli_real_escape_string($conn, $_POST['status']) : null;
 
@@ -244,14 +295,13 @@ if (isset($_POST['update'])) {
         $setParts[] = $date_field . " = " . ($out_date ? "'" . $out_date . "'" : 'NULL');
     }
 
-    $sql = "UPDATE stock_out SET " . implode(",\n            ", $setParts) . " WHERE id = " . (int)$id;
+    $sql = "UPDATE stock_out SET " . implode(", ", $setParts) . " WHERE id = " . (int)$id;
 
-
-    // Validate requested quantity against available stock (consider previous reservation if applied)
+    // Validate requested quantity against available stock
+    $appliedStates = ['completed', 'approved'];
     $available_new = check_available_stock_so($conn, $product_id, $location_id);
     $effective_available = $available_new;
     if (in_array($old_status, $appliedStates, true)) {
-        // If the record was applied previously and it's the same product/location, its old reservation frees up
         if ($old_product === $product_id && $old_location === $location_id) {
             $effective_available = $available_new + $old_quantity;
         }
@@ -261,22 +311,19 @@ if (isset($_POST['update'])) {
         exit;
     }
 
-    // Run update inside transaction and apply/rollback stock based on status transitions
+    // Run update inside transaction
     mysqli_begin_transaction($conn);
     try {
         if (!mysqli_query($conn, $sql)) {
             throw new Exception('Update error: ' . mysqli_error($conn));
         }
 
-        // Handle status transition: apply (subtract) when moving to completed/approved,
-        // rollback (add back) when moving from applied to pending/cancelled
-        $appliedStates = ['completed', 'approved'];
+        // Handle status transition
         $notAppliedStates = ['pending', 'cancelled', null, ''];
 
         if ($has_status && $new_status !== null && $new_status !== $old_status) {
-            // If moving from not-applied -> applied
+            // Moving from not-applied -> applied
             if (in_array($old_status, $notAppliedStates, true) && in_array($new_status, $appliedStates, true)) {
-                // subtract from stock at the (possibly updated) product/location
                 $available = check_available_stock_so($conn, $product_id, $location_id);
                 if ($available < $quantity) {
                     throw new Exception('Stok tidak mencukupi untuk menerapkan perubahan status. Tersedia: ' . $available);
@@ -290,7 +337,7 @@ if (isset($_POST['update'])) {
                 }
             }
 
-            // If moving from applied -> not-applied (rollback)
+            // Moving from applied -> not-applied (rollback)
             if (in_array($old_status, $appliedStates, true) && in_array($new_status, $notAppliedStates, true)) {
                 if ($old_product !== null) {
                     $check = mysqli_query($conn, "SELECT id FROM stock WHERE product_id = " . (int)$old_product . " AND location_id = " . (int)$old_location);
@@ -298,7 +345,6 @@ if (isset($_POST['update'])) {
                         $u = "UPDATE stock SET current_stock = current_stock + $old_quantity, last_updated = NOW() WHERE product_id = " . (int)$old_product . " AND location_id = " . (int)$old_location;
                         if (!mysqli_query($conn, $u)) throw new Exception('Error restoring stock: ' . mysqli_error($conn));
                     } else {
-                        // If stock row doesn't exist, attempt to create it
                         $ins = "INSERT INTO stock (product_id, location_id, current_stock, last_updated) VALUES (" . (int)$old_product . ", " . (int)$old_location . ", " . (int)$old_quantity . ", NOW())";
                         if (!mysqli_query($conn, $ins)) throw new Exception('Error creating stock record during rollback: ' . mysqli_error($conn));
                     }
@@ -439,61 +485,83 @@ function buildPaginationUrl($pageNum)
     <?php endif; ?>
 </div>
 
-<!-- Search box & Filter Group -->
+<!-- Search box & Filter Group - FIXED VERSION -->
 <div class="w-full flex justify-between gap-2 mb-6">
     <!-- Search box -->
     <form action="" method="GET" class="flex items-center gap-3 bg-white px-3 py-2 rounded-md shadow-md w-full">
         <i class='bx bx-search text-xl text-gray-500'></i>
         <input type="text" name="search" value="<?= htmlspecialchars($_GET['search'] ?? '') ?>" placeholder="Search by product, code, or reason..."
             class="w-full ml-2 focus:outline-none">
-        <?php if (!empty($_GET['category_id'])): ?>
-            <input type="hidden" name="category_id" value="<?= $_GET['category_id'] ?>">
-        <?php endif; ?>
-        <?php if (!empty($_GET['location_id'])): ?>
-            <input type="hidden" name="location_id" value="<?= $_GET['location_id'] ?>">
-        <?php endif; ?>
+
+        <!-- FIXED: Preserve all filter parameters -->
         <input type="hidden" name="page" value="inventory">
         <input type="hidden" name="sub" value="out">
+
+        <?php if (!empty($_GET['category_id'])): ?>
+            <input type="hidden" name="category_id" value="<?= htmlspecialchars($_GET['category_id']) ?>">
+        <?php endif; ?>
+
+        <?php if (!empty($_GET['location_id'])): ?>
+            <input type="hidden" name="location_id" value="<?= htmlspecialchars($_GET['location_id']) ?>">
+        <?php endif; ?>
+
+        <?php if (!empty($_GET['stock_status'])): ?>
+            <input type="hidden" name="stock_status" value="<?= htmlspecialchars($_GET['stock_status']) ?>">
+        <?php endif; ?>
+
+        <?php if (!empty($_GET['status'])): ?>
+            <input type="hidden" name="status" value="<?= htmlspecialchars($_GET['status']) ?>">
+        <?php endif; ?>
+
     </form>
 
     <!-- Filter Group -->
-    <div>
+    <div class="flex gap-2">
         <form action="" method="GET" class="flex gap-2 justify-end">
             <input type="hidden" name="page" value="inventory">
             <input type="hidden" name="sub" value="out">
+
             <?php if (!empty($_GET['search'])): ?>
                 <input type="hidden" name="search" value="<?= htmlspecialchars($_GET['search']) ?>">
             <?php endif; ?>
 
-            <!-- Filter Category -->
-            <select name="category_id"
-                class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer"
-                onchange="this.form.submit()">
-                <option value="">All Categories</option>
-                <?php
-                $query = "SELECT id, name FROM categories ORDER BY name ASC";
-                $catResult = mysqli_query($conn, $query);
-                while ($row = mysqli_fetch_assoc($catResult)) {
-                    $selected = (!empty($_GET['category_id']) && $_GET['category_id'] == $row['id']) ? 'selected' : '';
-                    echo '<option value="' . $row['id'] . '" ' . $selected . '>' . $row['name'] . '</option>';
-                }
-                ?>
-            </select>
+            <!-- Filter by Location -->
+            <?php if ($has_location): ?>
+                <select name="location_id"
+                    class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer"
+                    onchange="this.form.submit()">
+                    <option value="">All Locations</option>
+                    <?php
+                    $locationResult = mysqli_query($conn, "SELECT id, name FROM locations ORDER BY name ASC");
+                    while ($loc = mysqli_fetch_assoc($locationResult)) {
+                        $selected = (!empty($_GET['location_id']) && $_GET['location_id'] == $loc['id']) ? 'selected' : '';
+                        echo '<option value="' . $loc['id'] . '" ' . $selected . '>' . htmlspecialchars($loc['name']) . '</option>';
+                    }
+                    ?>
+                </select>
+            <?php endif; ?>
 
-            <!-- Filter Location -->
-            <select name="location_id"
-                class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer"
-                onchange="this.form.submit()">
-                <option value="">All Locations</option>
-                <?php
-                $query = "SELECT id, name FROM locations ORDER BY name ASC";
-                $locResult = mysqli_query($conn, $query);
-                while ($row = mysqli_fetch_assoc($locResult)) {
-                    $selected = (!empty($_GET['location_id']) && $_GET['location_id'] == $row['id']) ? 'selected' : '';
-                    echo '<option value="' . $row['id'] . '" ' . $selected . '>' . $row['name'] . '</option>';
-                }
-                ?>
-            </select>
+            <!-- Filter by Status -->
+            <?php if ($has_status): ?>
+                <select name="status"
+                    class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer"
+                    onchange="this.form.submit()">
+                    <option value="">All Status</option>
+                    <option value="pending" <?= ($_GET['status'] ?? '') == 'pending' ? 'selected' : '' ?>>Pending</option>
+                    <option value="approved" <?= ($_GET['status'] ?? '') == 'approved' ? 'selected' : '' ?>>Approved</option>
+                    <option value="completed" <?= ($_GET['status'] ?? '') == 'completed' ? 'selected' : '' ?>>Completed</option>
+                    <option value="cancelled" <?= ($_GET['status'] ?? '') == 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                </select>
+            <?php endif; ?>
+
+            <!-- Clear Filters Button -->
+            <?php if (!empty($_GET['search']) || !empty($_GET['category_id']) || !empty($_GET['location_id']) || !empty($_GET['status'])): ?>
+                <a href="index.php?page=inventory&sub=out"
+                    class="px-4 py-2 bg-red-500 text-white rounded-md shadow-md hover:bg-red-600 transition-colors flex items-center gap-2">
+                    <i class='bx bx-x text-lg'></i>
+                    Clear
+                </a>
+            <?php endif; ?>
         </form>
     </div>
 </div>
@@ -509,7 +577,6 @@ function buildPaginationUrl($pageNum)
                 <th class="px-4 py-3 text-center">Location</th>
                 <th class="px-4 py-3 text-center">Quantity</th>
                 <th class="px-4 py-3 text-center">Reason</th>
-                <th class="px-4 py-3 text-center">Notes</th>
                 <th class="px-4 py-3 text-center">Status</th>
                 <?php if ($isAdmin): ?>
                     <th class="px-4 py-3 text-center">Actions</th>
@@ -544,9 +611,6 @@ function buildPaginationUrl($pageNum)
                             <?= htmlspecialchars($row['reason']) ?>
                         </td>
 
-                        <td class="px-4 py-3 text-center text-sm text-gray-600">
-                            <?= htmlspecialchars($row['notes']) ?>
-                        </td>
 
                         <td class="px-4 py-3 text-center">
                             <?php
@@ -574,6 +638,7 @@ function buildPaginationUrl($pageNum)
                                     data-quantity='<?= $row['quantity'] ?>'
                                     data-reason='<?= htmlspecialchars($row['reason']) ?>'
                                     data-notes='<?= htmlspecialchars($row['notes']) ?>'
+                                    data-status='<?= htmlspecialchars($row['status']) ?>'
                                     data-out_date='<?= $row['out_date'] ?>'
                                     class="bg-yellow-400 text-white px-2 py-1 rounded hover:bg-yellow-500">
                                     <i class='bx bxs-edit'></i>
@@ -834,6 +899,110 @@ function buildPaginationUrl($pageNum)
                 </div>
 
                 <!-- Notes -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notes</label>
+                    <input type="text" name="notes" id="edit_notes"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#092363] outline-none"
+                        placeholder="Keterangan tambahan">
+                </div>
+
+                <div class="pt-4 flex justify-end gap-3 border-t border-gray-100 mt-2">
+                    <button type="button" onclick="closeModal('editOutModal')" class="px-5 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-all">Batal</button>
+                    <button type="submit" name="update"
+                        class="px-8 py-2 rounded-lg text-sm font-bold text-white bg-[#092363] hover:bg-[#e6b949] hover:text-[#092363] shadow-lg transform hover:-translate-y-0.5 transition-all">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- Modal Edit Stock Out -->
+<div id="editOutModal" class="custom-modal">
+    <div class="modal-backdrop" onclick="closeModal('editOutModal')"></div>
+    <div class="modal-flex-container">
+        <div class="modal-content-box">
+            <div class="bg-[#092363] px-6 py-4 rounded-t-[16px] flex justify-between items-center">
+                <h3 class="text-white text-lg font-bold tracking-wide">Edit Stock Out</h3>
+                <button onclick="closeModal('editOutModal')" class="text-white hover:text-[#e6b949] transition-colors text-2xl font-bold cursor-pointer">&times;</button>
+            </div>
+
+            <form action="" method="POST" class="p-6 space-y-4">
+                <input type="hidden" name="id" id="edit_id">
+
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wide">Stock Out Code</label>
+                    <input type="text" id="edit_stock_out_code" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-100 cursor-not-allowed" readonly>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div class="col-span-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Produk</label>
+                        <select name="product_id[]" id="edit_product_id" required
+                            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#092363] outline-none">
+                            <option value="">Pilih Produk</option>
+                            <?php
+                            $q = mysqli_query($conn, "SELECT id, name FROM products ORDER BY name ASC");
+                            while ($p = mysqli_fetch_assoc($q)) {
+                                echo "<option value='{$p['id']}'>" . htmlspecialchars($p['name']) . "</option>";
+                            }
+                            ?>
+                        </select>
+                    </div>
+
+                    <div class="col-span-1">
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Jumlah</label>
+                        <input type="number" name="quantity[]" id="edit_quantity" min="1" required
+                            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#092363] outline-none"
+                            placeholder="Qty">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Location</label>
+                    <select name="location_id" id="edit_location_id" required
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#092363] outline-none">
+                        <option value="">Pilih Location</option>
+                        <?php
+                        $query = "SELECT id, name FROM locations ORDER BY name ASC";
+                        $locResult = mysqli_query($conn, $query);
+                        while ($row = mysqli_fetch_assoc($locResult)) {
+                            echo '<option value="' . $row['id'] . '">' . htmlspecialchars($row['name']) . '</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tanggal Stock Out</label>
+                    <input type="date" name="out_date" id="edit_out_date" required
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#092363] outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Reason</label>
+                    <select name="reason" id="edit_reason" required
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#092363] outline-none">
+                        <option value="">Pilih Alasan</option>
+                        <option value="sale">Penjualan</option>
+                        <option value="damage">Barang Rusak</option>
+                        <option value="expired">Kadaluarsa</option>
+                        <option value="lost">Hilang</option>
+                        <option value="sample">Sample / Promo</option>
+                        <option value="adjustment">Penyesuaian Stok</option>
+                        <option value="transfer">Transfer Gudang</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
+                    <select name="status" id="edit_status" required
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#092363] outline-none">
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notes</label>
                     <input type="text" name="notes" id="edit_notes"

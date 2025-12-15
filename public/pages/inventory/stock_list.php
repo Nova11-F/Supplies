@@ -135,9 +135,6 @@ $query_string = http_build_query($query_params);
         <input type="text" name="search" value="<?= htmlspecialchars($_GET['search'] ?? '') ?>" 
                placeholder="Search by product name or code..."
                class="w-full ml-2 focus:outline-none">
-        <button type="submit" class="bg-[#092363] text-white px-4 py-1 rounded-lg hover:bg-[#e6b949] hover:text-[#092363] transition-all cursor-pointer">
-            Search
-        </button>
         <?php if (!empty($_GET['supplier_id'])): ?>
             <input type="hidden" name="supplier_id" value="<?= $_GET['supplier_id'] ?>">
         <?php endif; ?>

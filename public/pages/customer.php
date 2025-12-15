@@ -11,7 +11,7 @@ if (isset($_POST['create'])) {
     $status = $_POST['status'];
 
     // Cek apakah nama kategori sudah ada
-    $check = mysqli_query($conn, "SELECT id FROM customers WHERE name='$name' AND id <> '$id'");
+    $check = mysqli_query($conn, "SELECT id FROM customers WHERE name='$name'");
     if (mysqli_num_rows($check) > 0) {
         echo "<script>alert('Nama Customer sudah ada!'); location.href='index.php?page=customer';</script>";
         exit;
@@ -23,11 +23,37 @@ if (isset($_POST['create'])) {
     // Hapus semua spasi
     $name_no_space = str_replace(' ', '', $name);
 
-    // Ambil 4 huruf pertama (uppercase)
+    // Ambil 3 huruf pertama (uppercase)
     $prefix = strtoupper(substr($name_no_space, 0, 3));
 
-    // Buat brand_code
-    $code = "CUST-$prefix";
+    // Buat prefix code
+    $base_code = "CUST-$prefix";
+
+    // Cek di database apakah sudah ada ID dengan prefix ini
+    $sql = "SELECT customer_code 
+        FROM customers 
+        WHERE customer_code LIKE '$base_code-%' 
+        ORDER BY customer_code DESC 
+        LIMIT 1";
+
+    $result = $conn->query($sql);
+
+    if ($result->num_rows > 0) {
+        // Ambil kode terakhir
+        $row = $result->fetch_assoc();
+        $last_code = $row['customer_code'];
+
+        // Ambil angka di belakang
+        $last_number = (int)substr($last_code, strrpos($last_code, '-') + 1);
+
+        // Tambah 1
+        $new_number = $last_number + 1;
+    } else {
+        // Kalau belum ada, mulai dari 1
+        $new_number = 1;
+    }
+
+    $code = "$base_code-$new_number";
 
     mysqli_query($conn, "INSERT INTO customers (customer_code, name, email, phone, address, status)
         VALUES ('$code', '$name', '$email', '$phone', '$address', '$status')");
@@ -95,30 +121,15 @@ $search_keyword = isset($_GET['search']) ? trim($_GET['search']) : '';
 
 // Query untuk search customers
 $where_clause = '';
-$params = [];
-$types = '';
 
 if (!empty($search_keyword)) {
-    $where_clause = "WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?";
-    $search_param = "%{$search_keyword}%";
-    $params = [$search_param, $search_param, $search_param];
-    $types = 'sss';
+    $search = mysqli_real_escape_string($conn, $search_keyword);
+    $where_clause = "WHERE name LIKE '%$search%'";
 }
 
 // Query customers dengan search
 $query = "SELECT * FROM customers $where_clause ORDER BY name ASC";
-
-if (!empty($params)) {
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $result = $stmt->get_result();
-} else {
-    $result = mysqli_query($conn, $query);
-}
-
-//  GET ALL DATA
-$result = mysqli_query($conn, "SELECT * FROM customers ORDER BY id ASC");
+$result = mysqli_query($conn, $query);
 ?>
 
 <div class="px-8 py-2">
@@ -126,8 +137,11 @@ $result = mysqli_query($conn, "SELECT * FROM customers ORDER BY id ASC");
     <div class="flex items-center justify-end gap-4 mb-4">
         <div class="flex items-center gap-3 bg-white px-3 py-2 rounded-lg shadow-lg w-72">
             <i class='bx bx-search text-xl text-gray-500'></i>
-            <input type="text" placeholder="Search customer..."
-                class="w-full ml-2 focus:outline-none">
+            <input type="text" 
+                   id="searchCustomer" 
+                   placeholder="Search customer..."
+                   value="<?= htmlspecialchars($search_keyword) ?>"
+                   class="w-full ml-2 focus:outline-none">
         </div>
         <?php if ($isAdmin): ?>
             <button
@@ -160,52 +174,56 @@ $result = mysqli_query($conn, "SELECT * FROM customers ORDER BY id ASC");
                 <?php $no = 1; ?>
                 <?php if (mysqli_num_rows($result) > 0): ?>
                     <?php while ($row = mysqli_fetch_assoc($result)): ?>
-                    <!-- Contoh supplier -->
-                    <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-4 py-3 text-center text-gray-600"><?= $no++ ?></td>
-                        <td class="px-4 py-3 text-center text-gray-600"><?= $row['customer_code'] ?></td>
-                        <td class="px-4 py-3 text-center font-bold text-gray-800"><?= $row['name'] ?></td>
-                        <td class="px-4 py-3 text-center text-gray-600"><?= $row['phone'] ?></td>
-                        <td class="px-4 py-3 text-center text-gray-600"><?= $row['email'] ?></td>
-                        <td class="px-4 py-3 text-center text-gray-600 truncate max-w-xs"><?= $row['address'] ?></td>
+                        <!-- Contoh supplier -->
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 text-center text-gray-600"><?= $no++ ?></td>
+                            <td class="px-4 py-3 text-center text-gray-600"><?= $row['customer_code'] ?></td>
+                            <td class="px-4 py-3 text-center font-bold text-gray-800"><?= $row['name'] ?></td>
+                            <td class="px-4 py-3 text-center text-gray-600"><?= $row['phone'] ?></td>
+                            <td class="px-4 py-3 text-center text-gray-600"><?= $row['email'] ?></td>
+                            <td class="px-4 py-3 text-center text-gray-600 truncate max-w-xs"><?= $row['address'] ?></td>
 
-                        <td class="px-4 py-3 text-center">
-                            <?php if ($row['status'] == "active"): ?>
-                                <span class="bg-green-100 text-green-700 text-xs px-3 py-1 flex items-center justify-center rounded-full font-bold shadow-sm">Active</span>
-                            <?php else: ?>
-                                <span class="bg-gray-100 text-gray-600 text-xs px-3 py-1 flex items-center justify-center rounded-full font-bold shadow-sm">Inactive</span>
-                            <?php endif; ?>
-                        </td>
-
-                        <?php if ($isAdmin): ?>
-                            <td class="px-4 py-2 flex gap-2 items-center justify-center">
-                                <button
-                                    onclick="openEditModal('editCustomerModal', this)"
-                                    data-id="<?= $row['id'] ?>"
-                                    data-customer_code="<?= $row['customer_code'] ?>"
-                                    data-customer_name="<?= $row['name'] ?>"
-                                    data-phone="<?= $row['phone'] ?>"
-                                    data-email="<?= $row['email'] ?>"
-                                    data-address="<?= $row['address'] ?>"
-                                    data-status="<?= $row['status'] ?>"
-                                    class="bg-yellow-400 text-white px-2 py-1 rounded hover:bg-yellow-500 transform duration-300 hover:scale-102 transition-all cursor-pointer">
-                                    <i class='bx bxs-edit'></i>
-                                </button>
-                                <button onclick="if(confirm('Are you sure you want to delete this customer?')) { 
-                    window.location.href='index.php?page=customer&delete=<?= $row['id'] ?>'; }"
-                                    class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 transform duration-300 hover:scale-102 transition-all cursor-pointer">
-                                    <i class='bx bxs-trash'></i>
-                                </button>
-                            </td>
-                        <?php endif; ?>
-                    </tr>
-                <?php endwhile; ?>
+                            <td class="px-4 py-3 text-center">
+                                <?php if ($row['status'] == "active"): ?>
+                                    <span class="bg-green-100 text-green-700 text-xs px-3 py-1 flex items-center justify-center rounded-full font-bold shadow-sm">Active</span>
                                 <?php else: ?>
+                                    <span class="bg-gray-100 text-gray-600 text-xs px-3 py-1 flex items-center justify-center rounded-full font-bold shadow-sm">Inactive</span>
+                                <?php endif; ?>
+                            </td>
+
+                            <?php if ($isAdmin): ?>
+                                <td class="px-4 py-2 flex gap-2 items-center justify-center">
+                                    <button
+                                        onclick="openEditModal('editCustomerModal', this)"
+                                        data-id="<?= $row['id'] ?>"
+                                        data-customer_code="<?= $row['customer_code'] ?>"
+                                        data-customer_name="<?= $row['name'] ?>"
+                                        data-phone="<?= $row['phone'] ?>"
+                                        data-email="<?= $row['email'] ?>"
+                                        data-address="<?= $row['address'] ?>"
+                                        data-status="<?= $row['status'] ?>"
+                                        class="bg-yellow-400 text-white px-2 py-1 rounded hover:bg-yellow-500 transform duration-300 hover:scale-102 transition-all cursor-pointer">
+                                        <i class='bx bxs-edit'></i>
+                                    </button>
+                                    <button onclick="if(confirm('Are you sure you want to delete this customer?')) { 
+                    window.location.href='index.php?page=customer&delete=<?= $row['id'] ?>'; }"
+                                        class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 transform duration-300 hover:scale-102 transition-all cursor-pointer">
+                                        <i class='bx bxs-trash'></i>
+                                    </button>
+                                </td>
+                            <?php endif; ?>
+                        </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
                     <tr>
                         <td colspan="<?= $isAdmin ? 8 : 7 ?>" class="px-4 py-8 text-center text-gray-500">
                             <i class='bx bx-user text-5xl mb-2 opacity-50'></i>
-                            <p class="font-semibold">Tidak ada Customer yang tersedia</p>
-                            <p class="text-sm mt-1">Buat Customer terlebih dahulu</p>
+                            <p class="font-semibold">
+                                <?= !empty($search_keyword) ? 'Tidak ada hasil untuk "' . htmlspecialchars($search_keyword) . '"' : 'Tidak ada Customer yang tersedia' ?>
+                            </p>
+                            <p class="text-sm mt-1">
+                                <?= !empty($search_keyword) ? 'Coba kata kunci lain' : 'Buat Customer terlebih dahulu' ?>
+                            </p>
                         </td>
                     </tr>
                 <?php endif; ?>
@@ -227,6 +245,50 @@ $result = mysqli_query($conn, "SELECT * FROM customers ORDER BY id ASC");
     </div>
 
 </div>
+
+<!-- JavaScript untuk Search dengan Enter -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchCustomer');
+
+    // Search saat tekan Enter
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            performSearch();
+        }
+    });
+
+    // Clear search saat tekan ESC
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            searchInput.value = '';
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.delete('search');
+            currentUrl.searchParams.set('page', 'customer');
+            window.location.href = currentUrl.toString();
+        }
+    });
+
+    function performSearch() {
+        const searchValue = searchInput.value.trim();
+        
+        // Redirect ke halaman dengan parameter search
+        const currentUrl = new URL(window.location.href);
+        
+        if (searchValue !== '') {
+            currentUrl.searchParams.set('search', searchValue);
+        } else {
+            currentUrl.searchParams.delete('search');
+        }
+        
+        // Tetap di halaman customer
+        currentUrl.searchParams.set('page', 'customer');
+        
+        window.location.href = currentUrl.toString();
+    }
+});
+</script>
 
 <!-- Modal Tambah Customer -->
 <div id="customerModal" class="custom-modal">

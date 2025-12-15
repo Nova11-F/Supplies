@@ -13,26 +13,52 @@ if (isset($_POST['create'])) {
     $quantity = 0;
 
     // Cek apakah nama kategori sudah ada
-    $check = mysqli_query($conn, "SELECT id FROM suppliers WHERE name='$name' AND id <> '$id'");
+    $check = mysqli_query($conn, "SELECT id FROM suppliers WHERE name='$name'");
     if (mysqli_num_rows($check) > 0) {
         echo "<script>alert('Nama Supplier sudah ada!'); location.href='index.php?page=supplier';</script>";
         exit;
     }
 
-    // Ambil nama supplier dari input
+       // Ambil nama customer dari input
     $name = $_POST['supplier_name'];
 
     // Hapus semua spasi
     $name_no_space = str_replace(' ', '', $name);
 
-    // Ambil 4 huruf pertama (uppercase)
+    // Ambil 3 huruf pertama (uppercase)
     $prefix = strtoupper(substr($name_no_space, 0, 4));
 
-    // Buat brand_code
-    $code = "SUP-$prefix";
+    // Buat prefix code
+    $base_code = "SUP-$prefix";
 
-    mysqli_query($conn, "INSERT INTO suppliers (supplier_code, name, email, phone, address, total_products, status)
-        VALUES ('$code', '$name', '$email', '$phone', '$address', '$quantity', '$status')");
+    // Cek di database apakah sudah ada ID dengan prefix ini
+    $sql = "SELECT supplier_code 
+        FROM suppliers 
+        WHERE supplier_code LIKE '$base_code-%' 
+        ORDER BY supplier_code DESC 
+        LIMIT 1";
+
+    $result = $conn->query($sql);
+
+    if ($result->num_rows > 0) {
+        // Ambil kode terakhir
+        $row = $result->fetch_assoc();
+        $last_code = $row['supplier_code'];
+
+        // Ambil angka di belakang
+        $last_number = (int)substr($last_code, strrpos($last_code, '-') + 1);
+
+        // Tambah 1
+        $new_number = $last_number + 1;
+    } else {
+        // Kalau belum ada, mulai dari 1
+        $new_number = 1;
+    }
+
+    $code = "$base_code-$new_number";
+
+    mysqli_query($conn, "INSERT INTO suppliers (supplier_code, name, email, phone, address, status)
+        VALUES ('$code', '$name', '$email', '$phone', '$address', '$status')");
 
     echo "<script>alert('Supplier berhasil ditambahkan!'); location.href='index.php?page=supplier';</script>";
     exit;
@@ -41,21 +67,30 @@ if (isset($_POST['create'])) {
 //  UPDATE DATA
 if (isset($_POST['update'])) {
 
-    $id = $_POST['id'];
-    $name = $_POST['supplier_name'];
-    $phone = $_POST['phone'];
-    $email = $_POST['email'];
+    $id      = $_POST['id'];
+    $name    = trim($_POST['supplier_name']);
+    $phone   = $_POST['phone'];
+    $email   = $_POST['email'];
     $address = $_POST['address'];
-    $status = $_POST['status'];
+    $status  = $_POST['status'];
 
-    $name = trim($_POST['supplier_name']);
-
-    // Cek apakah nama kategori sudah ada
     $check = mysqli_query($conn, "SELECT id FROM suppliers WHERE name='$name' AND id <> '$id'");
     if (mysqli_num_rows($check) > 0) {
         echo "<script>alert('Nama Supplier sudah ada!'); location.href='index.php?page=supplier';</script>";
         exit;
     }
+
+    mysqli_query($conn, "UPDATE suppliers SET 
+        name='$name',
+        phone='$phone',
+        email='$email',
+        address='$address',
+        status='$status'
+        WHERE id='$id'");
+
+    echo "<script>alert('Supplier berhasil diupdate!'); location.href='index.php?page=supplier';</script>";
+    exit;
+
 
     // Ambil data lama dari database
     $result = mysqli_query($conn, "SELECT name, supplier_code FROM suppliers WHERE id='$id'");
@@ -84,15 +119,47 @@ if (isset($_POST['update'])) {
 
 //  DELETE DATA
 if (isset($_GET['delete'])) {
-
     $id = $_GET['delete'];
+
+    // Cek apakah supplier sudah dipakai di transaksi (purchase_orders)
+    $check = mysqli_query(
+        $conn,
+        "SELECT id FROM purchase_orders WHERE supplier_id = '$id' LIMIT 1"
+    );
+
+    if (mysqli_num_rows($check) > 0) {
+        // SUDAH ADA TRANSAKSI → TIDAK BOLEH DIHAPUS
+        echo "<script>
+            alert('Supplier tidak bisa dihapus karena sudah memiliki transaksi!');
+            location.href='index.php?page=supplier';
+        </script>";
+        exit;
+    }
+
+    // BELUM ADA TRANSAKSI → BOLEH DIHAPUS
     mysqli_query($conn, "DELETE FROM suppliers WHERE id='$id'");
-    echo "<script>alert('Supplier berhasil dihapus!'); location.href='index.php?page=supplier';</script>";
+
+    echo "<script>
+        alert('Supplier berhasil dihapus!');
+        location.href='index.php?page=supplier';
+    </script>";
     exit;
 }
 
+// Ambil search keyword dari GET parameter
+$search_keyword = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// Query untuk search customers
+$where_clause = '';
+
+if (!empty($search_keyword)) {
+    $search = mysqli_real_escape_string($conn, $search_keyword);
+    $where_clause = "WHERE name LIKE '%$search%'";
+}
+
 // GET ALL DATA
-$result = mysqli_query($conn, "SELECT * FROM suppliers ORDER BY id ASC");
+$query = "SELECT * FROM suppliers $where_clause ORDER BY name ASC";
+$result = mysqli_query($conn, $query);
 ?>
 
 <div class="px-8 py-2">
@@ -100,8 +167,11 @@ $result = mysqli_query($conn, "SELECT * FROM suppliers ORDER BY id ASC");
     <div class="flex items-center justify-end gap-4 mb-4">
         <div class="flex items-center gap-3 bg-white px-3 py-2 rounded-lg shadow-lg w-72">
             <i class='bx bx-search text-xl text-gray-500'></i>
-            <input type="text" placeholder="Search supplier..."
-                class="w-full ml-2 focus:outline-none">
+            <input type="text"
+                   id="searchSupplier" 
+                   placeholder="Search supplier..."
+                   value="<?= htmlspecialchars($search_keyword) ?>"
+                   class="w-full ml-2 focus:outline-none">
         </div>
         <?php if ($isAdmin): ?>
             <button
@@ -124,7 +194,6 @@ $result = mysqli_query($conn, "SELECT * FROM suppliers ORDER BY id ASC");
                     <th class="px-4 py-3 text-center">Phone</th>
                     <th class="px-4 py-3 text-center">Email</th>
                     <th class="px-4 py-3 text-center">Address</th>
-                    <th class="px-4 py-3 text-center">Product</th>
                     <th class="px-4 py-3 text-center">Status</th>
                     <?php if ($isAdmin): ?>
                         <th class="px-4 py-3 text-center">Actions</th>
@@ -143,7 +212,6 @@ $result = mysqli_query($conn, "SELECT * FROM suppliers ORDER BY id ASC");
                             <td class="px-4 py-3 text-center text-gray-600"><?= $row['phone'] ?></td>
                             <td class="px-4 py-3 text-center text-gray-600"><?= $row['email'] ?></td>
                             <td class="px-4 py-3 text-center text-gray-600 truncate max-w-xs"><?= $row['address'] ?></td>
-                            <td class="px-4 py-3 text-center text-gray-600"><?= $row['total_products'] ?></td>
 
                             <td class="px-4 py-3 text-center">
                                 <?php if ($row['status'] == "active"): ?>
@@ -205,6 +273,49 @@ $result = mysqli_query($conn, "SELECT * FROM suppliers ORDER BY id ASC");
 
 </div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchSupplier');
+
+    // Search saat tekan Enter
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            performSearch();
+        }
+    });
+
+    // Clear search saat tekan ESC
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            searchInput.value = '';
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.delete('search');
+            currentUrl.searchParams.set('page', 'supplier');
+            window.location.href = currentUrl.toString();
+        }
+    });
+
+    function performSearch() {
+        const searchValue = searchInput.value.trim();
+        
+        // Redirect ke halaman dengan parameter search
+        const currentUrl = new URL(window.location.href);
+        
+        if (searchValue !== '') {
+            currentUrl.searchParams.set('search', searchValue);
+        } else {
+            currentUrl.searchParams.delete('search');
+        }
+        
+        // Tetap di halaman customer
+        currentUrl.searchParams.set('page', 'supplier');
+        
+        window.location.href = currentUrl.toString();
+    }
+});
+</script>
+
 <!-- Modal Tambah Supplier -->
 <div id="supplierModal" class="custom-modal">
     <div class="modal-backdrop" onclick="closeModal('supplierModal')"></div>
@@ -238,11 +349,6 @@ $result = mysqli_query($conn, "SELECT * FROM suppliers ORDER BY id ASC");
                 <div class=mb-4>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wide">Alamat Lengkap</label>
                     <textarea name="address" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#092363] outline-none transition-all resize-none" placeholder="Jl. Nama Jalan No. X, Kota..."></textarea>
-                </div>
-
-                <div class=mb-4>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wide">Jumlah Product</label>
-                    <input type="number" name="quantyty" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#092363] outline-none transition-all" placeholder="0" readonly>
                 </div>
 
                 <div class=mb-4>
@@ -300,11 +406,6 @@ $result = mysqli_query($conn, "SELECT * FROM suppliers ORDER BY id ASC");
                 <div class="mb-4">
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wide">Alamat Lengkap</label>
                     <textarea name="address" id="edit_address" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#e6b949] outline-none transition-all resize-none"></textarea>
-                </div>
-
-                <div class=mb-4>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-wide">Jumlah Product</label>
-                    <input type="number" name="quantyty" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#092363] outline-none transition-all" placeholder="0" readonly>
                 </div>
 
                 <div class="mb-4">

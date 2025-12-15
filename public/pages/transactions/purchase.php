@@ -21,25 +21,43 @@ if (isset($_POST['create'])) {
     $supplier_row = $stmt->get_result()->fetch_assoc();
     $supplier_prefix = strtoupper(substr(preg_replace('/\s+/', '', $supplier_row['name']), 0, 4));
 
-    // Ambil product_code dari produk
+    // Ambil 4 huruf terakhir dari product_code
     $stmt = $conn->prepare("SELECT product_code FROM products WHERE id = ?");
     $stmt->bind_param("i", $product_id);
     $stmt->execute();
     $product_row = $stmt->get_result()->fetch_assoc();
-    $product_code = substr($product_row['product_code'], -4);
+    $product_code_full = $product_row['product_code'];
+    
+    // Ambil 4 karakter terakhir dari product code
+    $product_code = substr($product_code_full, -6);
 
-    // Buat PO code
+    // Buat base PO code
     $po_base = "PO-$supplier_prefix-$product_code";
-    // ensure unique po_code by appending sequence if needed
-    $count_stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM purchase_orders WHERE po_code LIKE CONCAT(?, '%')");
-    $count_stmt->bind_param("s", $po_base);
-    $count_stmt->execute();
-    $cnt = $count_stmt->get_result()->fetch_assoc()['cnt'] ?? 0;
-    if ($cnt > 0) {
-        $po_code = $po_base . '-' . ($cnt + 1);
+
+    // Cek nomor urut terakhir dengan base code ini
+    $check_sql = "SELECT po_code FROM purchase_orders WHERE po_code LIKE ? ORDER BY po_code DESC LIMIT 1";
+    $stmt = $conn->prepare($check_sql);
+    $like_pattern = $po_base . "-%";
+    $stmt->bind_param("s", $like_pattern);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        $last_row = $result->fetch_assoc();
+        $last_code = $last_row['po_code'];
+        
+        // Ambil angka di belakang (setelah tanda '-' terakhir)
+        $last_number = (int)substr($last_code, strrpos($last_code, '-') + 1);
+        
+        // Tambah 1
+        $new_number = $last_number + 1;
     } else {
-        $po_code = $po_base;
+        // Kalau belum ada, mulai dari 1
+        $new_number = 1;
     }
+
+    // PO code final
+    $po_code = "$po_base-$new_number";
 
     // Insert ke purchase_orders
     $stmt = $conn->prepare("INSERT INTO purchase_orders (po_code, supplier_id, order_date, status, total_amount, created_by) VALUES (?, ?, ?, ?, ?, ?)");
@@ -61,8 +79,6 @@ if (isset($_POST['create'])) {
     }
 }
 
-// NOTE: Approve action moved into the Edit flow (status field).
-
 // UPDATE DATA
 if (isset($_POST['update'])) {
     $po_item_id = (int)$_POST['id'];
@@ -76,7 +92,7 @@ if (isset($_POST['update'])) {
     $order_date = $_POST['order_date'] ?? date('Y-m-d');
     $status = $_POST['status'] ?? 'pending';
 
-    // Get po_id from po_items
+    // Get po_id dan data lama
     $stmt = $conn->prepare("SELECT po_id FROM po_items WHERE id = ?");
     $stmt->bind_param("i", $po_item_id);
     $stmt->execute();
@@ -84,31 +100,61 @@ if (isset($_POST['update'])) {
     $po_row = $result->fetch_assoc();
     $po_id = $po_row['po_id'];
 
-    // Ambil 4 huruf dari nama supplier
-    $stmt = $conn->prepare("SELECT name FROM suppliers WHERE id = ?");
-    $stmt->bind_param("i", $supplier_id);
+    // Ambil data PO lama untuk cek apakah supplier/product berubah
+    $stmt = $conn->prepare("SELECT po.supplier_id, poi.product_id FROM purchase_orders po 
+                           JOIN po_items poi ON poi.po_id = po.id 
+                           WHERE po.id = ?");
+    $stmt->bind_param("i", $po_id);
     $stmt->execute();
-    $supplier_row = $stmt->get_result()->fetch_assoc();
-    $supplier_prefix = strtoupper(substr(preg_replace('/\s+/', '', $supplier_row['name']), 0, 4));
+    $old_data = $stmt->get_result()->fetch_assoc();
 
-    // Ambil product_code
-    $stmt = $conn->prepare("SELECT product_code FROM products WHERE id = ?");
-    $stmt->bind_param("i", $product_id);
-    $stmt->execute();
-    $product_row = $stmt->get_result()->fetch_assoc();
-    $product_code = substr($product_row['product_code'], -4);
+    $supplier_changed = ($supplier_id != $old_data['supplier_id']);
+    $product_changed = ($product_id != $old_data['product_id']);
 
-    // PO code baru
-    $po_base = "PO-$supplier_prefix-$product_code";
-    // ensure unique po_code when updating (exclude current PO id)
-    $count_stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM purchase_orders WHERE po_code LIKE CONCAT(?, '%') AND id != ?");
-    $count_stmt->bind_param("si", $po_base, $po_id);
-    $count_stmt->execute();
-    $cnt = $count_stmt->get_result()->fetch_assoc()['cnt'] ?? 0;
-    if ($cnt > 0) {
-        $po_code = $po_base . '-' . ($cnt + 1);
+    // Jika supplier atau product berubah, buat PO code baru
+    if ($supplier_changed || $product_changed) {
+        // Ambil 4 huruf dari nama supplier
+        $stmt = $conn->prepare("SELECT name FROM suppliers WHERE id = ?");
+        $stmt->bind_param("i", $supplier_id);
+        $stmt->execute();
+        $supplier_row = $stmt->get_result()->fetch_assoc();
+        $supplier_prefix = strtoupper(substr(preg_replace('/\s+/', '', $supplier_row['name']), 0, 4));
+
+        // Ambil product_code
+        $stmt = $conn->prepare("SELECT product_code FROM products WHERE id = ?");
+        $stmt->bind_param("i", $product_id);
+        $stmt->execute();
+        $product_row = $stmt->get_result()->fetch_assoc();
+        $product_code = substr($product_row['product_code'], -4);
+
+        // PO code base baru
+        $po_base = "PO-$supplier_prefix-$product_code";
+
+        // Cek nomor urut (exclude current PO)
+        $check_sql = "SELECT po_code FROM purchase_orders WHERE po_code LIKE ? AND id != ? ORDER BY po_code DESC LIMIT 1";
+        $stmt = $conn->prepare($check_sql);
+        $like_pattern = $po_base . "-%";
+        $stmt->bind_param("si", $like_pattern, $po_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows > 0) {
+            $last_row = $result->fetch_assoc();
+            $last_code = $last_row['po_code'];
+            $last_number = (int)substr($last_code, strrpos($last_code, '-') + 1);
+            $new_number = $last_number + 1;
+        } else {
+            $new_number = 1;
+        }
+
+        $po_code = "$po_base-$new_number";
     } else {
-        $po_code = $po_base;
+        // Tetap gunakan kode lama
+        $stmt = $conn->prepare("SELECT po_code FROM purchase_orders WHERE id = ?");
+        $stmt->bind_param("i", $po_id);
+        $stmt->execute();
+        $code_data = $stmt->get_result()->fetch_assoc();
+        $po_code = $code_data['po_code'];
     }
 
     // Update purchase_orders
@@ -120,6 +166,7 @@ if (isset($_POST['update'])) {
     $stmt = $conn->prepare("UPDATE po_items SET product_id=?, location_id=?, quantity=?, unit_price=?, total_amount=? WHERE id=?");
     $stmt->bind_param("iidddi", $product_id, $location_id, $quantity, $unit_price, $total_amount, $po_item_id);
     $stmt->execute();
+    
     // If status is approved, set approved_by and approved_at; otherwise clear approval info
     if ($status === 'approved') {
         $approved_by = (int)($_SESSION['user_id'] ?? 1);
@@ -264,8 +311,6 @@ ORDER BY po.id DESC
                         <?php if ($isAdmin): ?>
                             <td class="px-4 py-2 flex gap-2 items-center justify-center">
 
-                                <!-- Receive action removed — handled automatically when status is approved -->
-
                                 <button onclick="openEditModal('editPurchaseModal', this)"
                                     data-id="<?= $row['id'] ?>"
                                     data-po_id="<?= $row['po_code'] ?>"
@@ -305,7 +350,7 @@ ORDER BY po.id DESC
 
 <!-- Next menu -->
 <div class="flex justify-between items-center px-6 mb-10">
-    <span class="text-sm text-gray-500">Showing 1 to 10 of 150 entries</span>
+    <span class="text-sm text-gray-500">Showing <?= mysqli_num_rows($result) ?> entries</span>
     <div class="flex gap-1">
         <button class="px-3 py-1 rounded border bg-white border-gray-300 text-gray-700 hover:bg-[#e6b949] hover:text-[#092363] text-sm font-bold">Prev</button>
         <button class="px-3 py-1 rounded border border-[#092363] bg-[#092363] text-white text-sm">1</button>

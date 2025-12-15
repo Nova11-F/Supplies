@@ -49,7 +49,35 @@ if (isset($_POST['create'])) {
     // Ambil 4 huruf pertama (uppercase)
     $prefix = strtoupper(substr($name_no_space, 0, 4));
 
-    $product_code = "PROD-" . $prefix . "-" . $brand_code;
+    // Buat base code
+    $base_code = "PROD-" . $prefix . "-" . $brand_code;
+
+    // Cek di database apakah sudah ada product_code dengan prefix ini
+    $check_code_sql = "SELECT product_code 
+                       FROM products 
+                       WHERE product_code LIKE '$base_code-%' 
+                       ORDER BY product_code DESC 
+                       LIMIT 1";
+    
+    $result_code = mysqli_query($conn, $check_code_sql);
+
+    if ($result_code && mysqli_num_rows($result_code) > 0) {
+        // Ambil kode terakhir
+        $row_code = mysqli_fetch_assoc($result_code);
+        $last_code = $row_code['product_code'];
+
+        // Ambil angka di belakang (setelah tanda '-' terakhir)
+        $last_number = (int)substr($last_code, strrpos($last_code, '-') + 1);
+
+        // Tambah 1
+        $new_number = $last_number + 1;
+    } else {
+        // Kalau belum ada, mulai dari 1
+        $new_number = 1;
+    }
+
+    // Product code final
+    $product_code = "$base_code-$new_number";
 
     // Build SQL safely
     $category_sql = $category_id ? $category_id : 'NULL';
@@ -90,26 +118,62 @@ if (isset($_POST['update'])) {
         exit;
     }
 
-    // Get brand code
-    $brand_code = 'UNK';
-    if ($brand_id) {
-        $res_brand = mysqli_query($conn, "SELECT brand_code FROM brands WHERE id=$brand_id");
-        if ($res_brand && mysqli_num_rows($res_brand) > 0) {
-            $row_brand = mysqli_fetch_assoc($res_brand);
-            $full_code = $row_brand['brand_code'];
-            
-            if (strpos($full_code, 'BRN-') === 0) {
-                $brand_code = substr($full_code, 4);
-            } else {
-                $brand_code = $full_code;
+    // Get old data
+    $result_old = mysqli_query($conn, "SELECT name, brand_id FROM products WHERE id=$id");
+    $old_data = mysqli_fetch_assoc($result_old);
+
+    // Cek apakah nama atau brand berubah
+    $name_changed = ($name !== $old_data['name']);
+    $brand_changed = ($brand_id != $old_data['brand_id']);
+
+    if ($name_changed || $brand_changed) {
+        // Generate new product code
+        $brand_code = 'UNK';
+        if ($brand_id) {
+            $res_brand = mysqli_query($conn, "SELECT brand_code FROM brands WHERE id=$brand_id");
+            if ($res_brand && mysqli_num_rows($res_brand) > 0) {
+                $row_brand = mysqli_fetch_assoc($res_brand);
+                $full_code = $row_brand['brand_code'];
+                
+                if (strpos($full_code, 'BRN-') === 0) {
+                    $brand_code = substr($full_code, 4);
+                } else {
+                    $brand_code = $full_code;
+                }
             }
         }
-    }
 
-    // Generate new product code
-    $name_no_space = str_replace(' ', '', $name);
-    $prefix = strtoupper(substr($name_no_space, 0, 4));
-    $product_code = "PROD-" . $prefix . "-" . $brand_code;
+        // Generate new code
+        $name_no_space = str_replace(' ', '', $name);
+        $prefix = strtoupper(substr($name_no_space, 0, 4));
+        $base_code = "PROD-" . $prefix . "-" . $brand_code;
+
+        // Cek nomor urut
+        $check_code_sql = "SELECT product_code 
+                           FROM products 
+                           WHERE product_code LIKE '$base_code-%'
+                           AND id != $id
+                           ORDER BY product_code DESC 
+                           LIMIT 1";
+        
+        $result_code = mysqli_query($conn, $check_code_sql);
+
+        if ($result_code && mysqli_num_rows($result_code) > 0) {
+            $row_code = mysqli_fetch_assoc($result_code);
+            $last_code = $row_code['product_code'];
+            $last_number = (int)substr($last_code, strrpos($last_code, '-') + 1);
+            $new_number = $last_number + 1;
+        } else {
+            $new_number = 1;
+        }
+
+        $product_code = "$base_code-$new_number";
+    } else {
+        // Tetap gunakan kode lama
+        $result_code = mysqli_query($conn, "SELECT product_code FROM products WHERE id=$id");
+        $code_data = mysqli_fetch_assoc($result_code);
+        $product_code = $code_data['product_code'];
+    }
 
     // Build SQL
     $category_sql = $category_id ? $category_id : 'NULL';
@@ -137,6 +201,32 @@ if (isset($_GET['delete'])) {
     exit;
 }
 
+// Ambil filter dari GET parameter
+$search_keyword = isset($_GET['search']) ? trim($_GET['search']) : '';
+$filter_category = isset($_GET['category']) ? (int)$_GET['category'] : 0;
+$filter_brand = isset($_GET['brand']) ? (int)$_GET['brand'] : 0;
+
+// Build WHERE clause
+$where_conditions = [];
+
+if (!empty($search_keyword)) {
+    $search = mysqli_real_escape_string($conn, $search_keyword);
+    $where_conditions[] = "p.name LIKE '%$search%'";
+}
+
+if ($filter_category > 0) {
+    $where_conditions[] = "p.category_id = $filter_category";
+}
+
+if ($filter_brand > 0) {
+    $where_conditions[] = "p.brand_id = $filter_brand";
+}
+
+$where_clause = '';
+if (count($where_conditions) > 0) {
+    $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+}
+
 // GET ALL DATA
 $products_result = mysqli_query($conn, "
     SELECT 
@@ -146,6 +236,7 @@ $products_result = mysqli_query($conn, "
     FROM products p
     LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN brands b ON b.id = p.brand_id
+    $where_clause
     ORDER BY p.id ASC
 ");
 ?>
@@ -167,35 +258,38 @@ $products_result = mysqli_query($conn, "
     <!-- Search box -->
     <div class="flex items-center gap-3 bg-white px-3 py-2 rounded-md shadow-md w-full">
         <i class='bx bx-search text-xl text-gray-500'></i>
-        <input type="text" placeholder="Search item..."
-            class="w-full ml-2 focus:outline-none">
+        <input type="text" 
+        placeholder="Search product name..."
+        id="searchProduct"
+        value="<?= htmlspecialchars($search_keyword) ?>"
+        class="w-full ml-2 focus:outline-none">
     </div>
 
     <!-- Filter Group -->
     <div class="flex gap-2 justify-end">
 
         <!-- Filter Category -->
-        <select class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer">
+        <select id="filterCategory" class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer">
             <option value="">All Categories</option>
-            <option value="electronics">Electronics</option>
-            <option value="sparepart">Spare Parts</option>
-            <option value="office">Office Supplies</option>
+            <?php
+            $cat_query = mysqli_query($conn, "SELECT id, name FROM categories ORDER BY name ASC");
+            while ($cat_row = mysqli_fetch_assoc($cat_query)) {
+                $selected = ($filter_category == $cat_row['id']) ? 'selected' : '';
+                echo '<option value="' . $cat_row['id'] . '" ' . $selected . '>' . htmlspecialchars($cat_row['name']) . '</option>';
+            }   
+            ?>
         </select>
 
-        <!-- Filter Location -->
-        <select class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer">
-            <option value="">All Locations</option>
-            <option value="warehouse_a">Warehouse A</option>
-            <option value="warehouse_b">Warehouse B</option>
-            <option value="warehouse_c">Warehouse C</option>
-        </select>
-
-        <!-- Filter Stock Status -->
-        <select class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer">
+        <!-- Filter Brand -->
+        <select id="filterBrand" class="px-4 py-2 bg-white rounded-md shadow-md focus:outline-none text-gray-700 cursor-pointer">
             <option value="">All Brands</option>
-            <option value="low">Low Stock</option>
-            <option value="out">Out of Stock</option>
-            <option value="normal">Normal</option>
+            <?php
+            $brand_query = mysqli_query($conn, "SELECT id, name FROM brands ORDER BY name ASC");
+            while ($brand_row = mysqli_fetch_assoc($brand_query)) {
+                $selected = ($filter_brand == $brand_row['id']) ? 'selected' : '';
+                echo '<option value="' . $brand_row['id'] . '" ' . $selected . '>' . htmlspecialchars($brand_row['name']) . '</option>';
+            }   
+            ?>
         </select>
     </div>
 </div>
@@ -254,8 +348,12 @@ $products_result = mysqli_query($conn, "
                 <tr>
                     <td colspan="<?= $isAdmin ? 7 : 6 ?>" class="px-4 py-8 text-center text-gray-500">
                         <i class='bx bx-package text-5xl mb-2 opacity-50'></i>
-                        <p class="font-semibold">Tidak ada Produk yang tersedia</p>
-                        <p class="text-sm mt-1">Buat Produk terlebih dahulu</p>
+                        <p class="font-semibold">
+                            <?= !empty($search_keyword) || $filter_category > 0 || $filter_brand > 0 ? 'Tidak ada hasil yang ditemukan' : 'Tidak ada Produk yang tersedia' ?>
+                        </p>
+                        <p class="text-sm mt-1">
+                            <?= !empty($search_keyword) || $filter_category > 0 || $filter_brand > 0 ? 'Coba ubah filter atau kata kunci pencarian' : 'Buat Produk terlebih dahulu' ?>
+                        </p>
                     </td>
                 </tr>
             <?php endif; ?>
@@ -265,7 +363,7 @@ $products_result = mysqli_query($conn, "
 
 <!-- Next menu -->
 <div class="flex justify-between items-center px-6 mb-10">
-    <span class="text-sm text-gray-500">Showing 1 to 10 of 150 entries</span>
+    <span class="text-sm text-gray-500">Showing <?= mysqli_num_rows($products_result) ?> entries</span>
     <div class="flex gap-1">
         <button class="px-3 py-1 rounded border bg-white border-gray-300 text-gray-700 hover:bg-[#e6b949] hover:text-[#092363] text-sm font-bold">Prev</button>
         <button class="px-3 py-1 rounded border border-[#092363] bg-[#092363] text-white text-sm">1</button>
@@ -273,6 +371,74 @@ $products_result = mysqli_query($conn, "
         <button class="px-3 py-1 rounded border bg-white border-gray-300 text-gray-700 hover:bg-[#e6b949] hover:text-[#092363] text-sm font-bold">Next</button>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchProduct');
+    const filterCategory = document.getElementById('filterCategory');
+    const filterBrand = document.getElementById('filterBrand');
+
+    // Search saat tekan Enter
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyFilters();
+        }
+    });
+
+    // Clear search saat tekan ESC
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            searchInput.value = '';
+            applyFilters();
+        }
+    });
+
+    // Filter saat dropdown berubah
+    filterCategory.addEventListener('change', function() {
+        applyFilters();
+    });
+
+    filterBrand.addEventListener('change', function() {
+        applyFilters();
+    });
+
+    function applyFilters() {
+        const searchValue = searchInput.value.trim();
+        const categoryValue = filterCategory.value;
+        const brandValue = filterBrand.value;
+        
+        const currentUrl = new URL(window.location.href);
+        
+        // Set search parameter
+        if (searchValue !== '') {
+            currentUrl.searchParams.set('search', searchValue);
+        } else {
+            currentUrl.searchParams.delete('search');
+        }
+
+        // Set category filter
+        if (categoryValue !== '') {
+            currentUrl.searchParams.set('category', categoryValue);
+        } else {
+            currentUrl.searchParams.delete('category');
+        }
+
+        // Set brand filter
+        if (brandValue !== '') {
+            currentUrl.searchParams.set('brand', brandValue);
+        } else {
+            currentUrl.searchParams.delete('brand');
+        }
+        
+        // Maintain page and sub parameters
+        currentUrl.searchParams.set('page', 'catalog');
+        currentUrl.searchParams.set('sub', 'products');
+        
+        window.location.href = currentUrl.toString();
+    }
+});
+</script>
 
 <!-- Modal Create Product -->
 <div id="productModal" class="custom-modal">
@@ -395,4 +561,3 @@ $products_result = mysqli_query($conn, "
         </div>
     </div>
 </div>
-
