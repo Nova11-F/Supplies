@@ -14,7 +14,6 @@ Sistem informasi berbasis web yang dirancang untuk membantu proses **pengelolaan
 
 </div>
 
----
 
 # 📖 Tentang Proyek
 
@@ -26,7 +25,6 @@ Melalui aplikasi ini, pengguna dapat mengelola data produk, supplier, transaksi 
 
 Selain itu, sistem menerapkan **Role-Based Access Control (RBAC)** sehingga setiap pengguna hanya dapat mengakses fitur sesuai dengan hak akses yang dimiliki.
 
----
 
 # 🎯 Tujuan Pengembangan
 
@@ -39,7 +37,6 @@ Pengembangan sistem ini bertujuan untuk:
 - ⚡ Meningkatkan efisiensi proses bisnis
 - 🔒 Menjaga keamanan data melalui sistem hak akses
 
----
 
 # ✨ Fitur Utama
 
@@ -54,7 +51,6 @@ Pengembangan sistem ini bertujuan untuk:
 | ⚙️ Settings | Profil pengguna dan perubahan password |
 | 📑 Reports | Laporan inventory, supplier, transaksi, dan aktivitas |
 
----
 
 # 🏗️ Arsitektur Sistem
 
@@ -98,7 +94,6 @@ H --> J
 I --> J
 ```
 
----
 
 # 🛠️ Teknologi yang Digunakan
 
@@ -113,7 +108,6 @@ I --> J
 - PHP Native
 - MySQL
 
----
 
 # 📂 Struktur Project
 
@@ -140,7 +134,6 @@ Supply-Management-System/
 └── README.md
 ```
 
----
 
 # ⚙️ Konfigurasi Database
 
@@ -161,7 +154,6 @@ $db   = "supply_management";
 $conn = mysqli_connect($host, $user, $pass, $db);
 ```
 
----
 
 # 🚀 Cara Menjalankan Aplikasi
 
@@ -171,7 +163,6 @@ $conn = mysqli_connect($host, $user, $pass, $db);
 git clone https://github.com/username/supply-management-system.git
 ```
 
----
 
 ### 2️⃣ Pindahkan Project
 
@@ -180,7 +171,6 @@ Salin project ke folder web server:
 - XAMPP → `htdocs`
 - Laragon → `www`
 
----
 
 ### 3️⃣ Jalankan Server
 
@@ -189,13 +179,11 @@ Aktifkan:
 - Apache
 - MySQL
 
----
 
 ### 4️⃣ Import Database
 
 Import file SQL ke MySQL melalui phpMyAdmin.
 
----
 
 ### 5️⃣ Konfigurasi Database
 
@@ -205,7 +193,6 @@ Sesuaikan file:
 config/database.php
 ```
 
----
 
 ### 6️⃣ Jalankan Aplikasi
 
@@ -215,13 +202,11 @@ Buka browser:
 http://localhost/supply-management-system
 ```
 
----
 
 ### 7️⃣ Login
 
 Masukkan akun yang tersedia pada database.
 
----
 
 # 🔐 Hak Akses
 
@@ -230,7 +215,6 @@ Masukkan akun yang tersedia pada database.
 | 👑 Admin | Mengakses seluruh fitur sistem |
 | 👨‍💼 Staff | Mengelola data sesuai hak akses yang diberikan |
 
----
 
 # 📊 Alur Sistem
 
@@ -262,7 +246,6 @@ Inventory->>Database: Simpan / Update Data
 Database-->>Inventory: Success
 ```
 
----
 
 # 📸 Tampilan Aplikasi
 
@@ -274,7 +257,7 @@ assets/dashboard.png
 
 ![Dashboard](assets/dashboard.png)
 
----
+
 
 ## 📦 Inventory
 
@@ -284,7 +267,6 @@ assets/inventory.png
 
 ![Inventory](assets/inventory.png)
 
----
 
 ## 🏢 Supplier
 
@@ -294,7 +276,7 @@ assets/supplier.png
 
 ![Supplier](assets/supplier.png)
 
----
+
 
 ## 🛒 Transaction
 
@@ -304,7 +286,6 @@ assets/transaction.png
 
 ![Transaction](assets/transaction.png)
 
----
 
 ## 📑 Reports
 
@@ -314,7 +295,6 @@ assets/report.png
 
 ![Report](assets/report.png)
 
----
 
 # 📌 Status Fitur
 
@@ -329,7 +309,6 @@ assets/report.png
 | User Management | ✅ |
 | Settings | ✅ |
 
----
 
 # 🚀 Rencana Pengembangan
 
@@ -346,7 +325,6 @@ Beberapa fitur yang akan dikembangkan pada versi berikutnya:
 - ☁️ Cloud Database Integration
 - 🏭 Multi Warehouse Management
 
----
 
 # 👥 Tim Pengembang
 
@@ -357,7 +335,6 @@ Beberapa fitur yang akan dikembangkan pada versi berikutnya:
 | **Firman Nova Prayoga** | 24051204088 |
 | **Fawwaz Baghiz Al Ghozy Dinullah** | 24051204094 |
 
----
 
 # 🎓 Tujuan Proyek
 
@@ -370,13 +347,11 @@ Proyek ini dikembangkan sebagai bagian dari pembelajaran mata kuliah **Sistem In
 - Web Development
 - CRUD Application
 
----
 
 # 📜 Lisensi
 
 Proyek ini dibuat untuk **keperluan pembelajaran** dan **pengembangan akademik**.
 
----
 
 <div align="center">
 
